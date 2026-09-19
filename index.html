@@ -28,7 +28,7 @@
     getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail
   } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
   import {
-    getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, onSnapshot
+    getFirestore, doc, getDoc, setDoc, arrayUnion, runTransaction, onSnapshot
   } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -59,9 +59,17 @@
       const snap = await getDoc(stateDocRef);
       return snap.exists() ? snap.data() : null;
     },
-    saveState: (data) => setDoc(stateDocRef, data),
+    // full-state save that deliberately LEAVES pendingRequests untouched on the server,
+    // so a stale copy on someone's device can never wipe out or resurrect requests
+    saveState: (data) => { const { pendingRequests, ...rest } = data; return setDoc(stateDocRef, rest, { merge: true }); },
     // atomic append: only adds this one request, never overwrites other people's data
-    addRequest: (req) => updateDoc(stateDocRef, { pendingRequests: arrayUnion(req) }),
+    addRequest: (req) => setDoc(stateDocRef, { pendingRequests: arrayUnion(req) }, { merge: true }),
+    // atomic removal of one request by id (accept / reject)
+    removeRequest: (id) => runTransaction(db, async (tx) => {
+      const snap = await tx.get(stateDocRef);
+      const list = (snap.exists() && snap.data().pendingRequests) || [];
+      tx.set(stateDocRef, { pendingRequests: list.filter(r => r.id !== id) }, { merge: true });
+    }),
     listenState: (cb) => onSnapshot(stateDocRef, (snap) => {
       if (snap.exists()) cb(snap.data(), snap.metadata.hasPendingWrites);
     }, (err) => console.error('Firestore listen error', err))
@@ -1446,7 +1454,7 @@ function rejectRequest(id){
   if(!hasPermission('requests')){ toast('ليست لديك صلاحية إدارة الطلبات'); return; }
   if(!confirm('رفض هذا الطلب؟')) return;
   state.pendingRequests = state.pendingRequests.filter(r=>r.id!==id);
-  saveState(); renderRequests(); renderAdminHome(); toast('تم رفض الطلب');
+  saveState(); window.FB.removeRequest(id).catch(e=>console.error('remove request failed',e)); renderRequests(); renderAdminHome(); toast('تم رفض الطلب');
 }
 function openAcceptModal(id){
   const r = state.pendingRequests.find(x=>x.id===id);
@@ -1476,7 +1484,7 @@ function acceptRequest(id){
   const order = g.members.length + 1;
   g.members.push({id:uid('m'), name:r.name, phone:r.phone, email:r.email, password:r.password||'', passwordHistory:[], order, paid:false, paymentsCount:0, receiptImg:null, verifying:false, joinedAt:Date.now(), dueDate: nextDueDate(g)});
   state.pendingRequests = state.pendingRequests.filter(x=>x.id!==id);
-  saveState(); closeModal(); renderRequests(); renderAdminHome();
+  saveState(); window.FB.removeRequest(id).catch(e=>console.error('remove request failed',e)); closeModal(); renderRequests(); renderAdminHome();
   toast(`تمت إضافة ${r.name} إلى ${g.name}`);
 }
 function nextDueDate(g){
