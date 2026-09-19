@@ -1261,7 +1261,7 @@ function memberLogin(){
    set up an Email Service + Template (with a variable like {{otp_code}}),
    then fill in the three values below. Leave them empty to keep the
    safe demo mode, where the code is simply shown on-screen for testing. */
-const EMAILJS_CONFIG = { serviceId:'service_qi5z1fx', templateId:'template_xfrfpfp', publicKey:'CUqWrIKomlExx02n_' };
+const EMAILJS_CONFIG = { serviceId:'service_qi5z1fx', templateId:'template_z8wmo5q', publicKey:'CUqWrIKomlExx02n_' };
 
 let otpFlow = {kind:null, record:null};
 function openForgotModal(kind){
@@ -1318,7 +1318,7 @@ function sendOtpEmail(email, code){
     .then(()=>{ toast('تم إرسال رمز التحقق إلى بريدك'); showOtpStep(); })
     .catch(err=>{
       console.error('EmailJS error', err);
-      toast('تعذّر إرسال البريد: ' + ((err && (err.text||err.message)) || 'خطأ غير معروف'));
+      toast('تعذّر إرسال البريد: ' + ((err && (err.text||err.message)) || 'خطأ غير معروف') + ' [' + c.serviceId + ' | ' + c.templateId + ']');
       setOtpSending(false);
     });
 }
